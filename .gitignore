@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.pyc
+
+# Virtual Environments
+.venv/
+env/
+venv/
+
+# ML / DL Models
+models/
+*.h5
+*.joblib
+*.pt
+*.bin
+*.pkl
+
+# MLflow
+mlruns/
+mlflow.db
+
+# Data folders (optional – if large)
+data/
+bert_results/
+
+# Environment variables
+.env
