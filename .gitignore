@@ -1,27 +1,21 @@
-# Python
+# Python cache
 __pycache__/
 *.pyc
 
-# Virtual Environments
+# Virtual environments
 .venv/
 env/
 venv/
 
-# ML / DL Models
-models/
-*.h5
-*.joblib
-*.pt
-*.bin
-*.pkl
-
-# MLflow
+# Training artifacts
 mlruns/
 mlflow.db
 
-# Data folders (optional – if large)
+# Dataset (not needed in production)
 data/
 bert_results/
 
-# Environment variables
+# OS / secrets
 .env
+.DS_Store
+Thumbs.db
