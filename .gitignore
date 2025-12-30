@@ -11,7 +11,7 @@ venv/
 mlruns/
 mlflow.db
 
-# Dataset (not needed in production)
+# Dataset
 data/
 bert_results/
 
@@ -19,3 +19,9 @@ bert_results/
 .env
 .DS_Store
 Thumbs.db
+
+# =========================
+# Ignore ONLY LARGE MODELS
+# =========================
+models/distilbert_text_classifier/
+*.safetensors
