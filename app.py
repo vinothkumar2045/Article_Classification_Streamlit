@@ -17,7 +17,11 @@ from sqlalchemy import create_engine, text
 # =============================
 # PAGE CONFIG
 # =============================
-st.set_page_config(page_title="Article Classification System", layout="centered")
+st.set_page_config(
+    page_title="Article Classification System",
+    layout="centered"
+)
+
 st.title("📰 Article Classification System")
 
 # =============================
@@ -69,21 +73,26 @@ def validate_login(username, password):
 # =============================
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
+
 if "username" not in st.session_state:
     st.session_state.username = ""
+
 if "page" not in st.session_state:
     st.session_state.page = "Login"
 
 # =============================
 # SIDEBAR NAVIGATION
 # =============================
+st.sidebar.title("📌 Navigation")
+
 pages = ["Login", "Article Classification", "Model Comparison"]
 
 page = st.sidebar.radio(
-    "Navigation",
+    "Go to",
     pages,
     index=pages.index(st.session_state.page)
 )
+
 st.session_state.page = page
 
 # LOGOUT
@@ -196,14 +205,17 @@ elif page == "Article Classification":
 
         pred_idx = int(np.argmax(proba)) + 1
         st.success(f"Predicted Category: {label_map[pred_idx]}")
-        st.info(f"Confidence: {np.max(proba)*100:.2f}%")
+        st.info(f"Confidence: {np.max(proba) * 100:.2f}%")
 
 # =============================
 # PAGE 3: MODEL COMPARISON
 # =============================
 elif page == "Model Comparison":
-    st.dataframe(pd.DataFrame({
-        "Model": ["Logistic Regression", "LSTM", "GRU"],
-        "Speed": ["Very Fast", "Fast", "Fast"],
-        "Accuracy (%)": [90.6, 92.8, 94.1]
-    }), use_container_width=True)
+    st.dataframe(
+        pd.DataFrame({
+            "Model": ["Logistic Regression", "LSTM", "GRU"],
+            "Speed": ["Very Fast", "Fast", "Fast"],
+            "Accuracy (%)": [90.6, 92.8, 94.1]
+        }),
+        use_container_width=True
+    )
