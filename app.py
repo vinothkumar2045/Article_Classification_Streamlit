@@ -1,36 +1,33 @@
 # ==========================================
-# FAST & STABLE STREAMLIT ARTICLE CLASSIFIER
-# Logistic Regression (Production Ready)
-# With RDS Login / Register / Logout
+# FAST & STABLE ARTICLE CLASSIFICATION APP
+# (ML + LSTM + GRU) WITH RDS AUTH — FIXED
 # ==========================================
 
 import streamlit as st
 import numpy as np
-import pandas as pd
 import pickle
+import pandas as pd
 import hashlib
 
 from joblib import load
+from tensorflow.keras.models import load_model
+from tensorflow.keras.preprocessing.sequence import pad_sequences
 from sqlalchemy import create_engine, text
 
 # =============================
 # PAGE CONFIG
 # =============================
-st.set_page_config(
-    page_title="Article Classification System",
-    layout="centered"
-)
-
+st.set_page_config(page_title="Article Classification", layout="centered")
 st.title("📰 Article Classification System")
 
 # =============================
-# DATABASE CONFIG (RDS)
+# DATABASE CONFIG
 # =============================
 DB_HOST = "streamlit-db.c10c0s8c6mju.ap-south-1.rds.amazonaws.com"
 DB_PORT = "5432"
 DB_NAME = "articledb"
 DB_USER = "dbadmin"
-DB_PASSWORD = "cpvinoth2045"   # your password
+DB_PASSWORD = "cpvinoth2045"
 
 @st.cache_resource
 def get_engine():
@@ -42,82 +39,83 @@ def get_engine():
 # =============================
 # AUTH HELPERS
 # =============================
-def hash_password(password):
-    return hashlib.sha256(password.encode()).hexdigest()
+def hash_pwd(pwd):
+    return hashlib.sha256(pwd.encode()).hexdigest()
 
-def register_user(username, password):
-    q = text("""
-        INSERT INTO users (username, password)
-        VALUES (:u, :p)
-    """)
+def register_user(u, p):
     with get_engine().begin() as conn:
-        conn.execute(q, {"u": username, "p": hash_password(password)})
+        conn.execute(
+            text("INSERT INTO users(username,password) VALUES(:u,:p)"),
+            {"u": u, "p": hash_pwd(p)}
+        )
 
-def validate_login(username, password):
-    q = text("""
-        SELECT id FROM users
-        WHERE username = :u AND password = :p
-    """)
+def validate_login(u, p):
     with get_engine().connect() as conn:
-        return conn.execute(
-            q, {"u": username, "p": hash_password(password)}
-        ).fetchone() is not None
+        r = conn.execute(
+            text("SELECT id FROM users WHERE username=:u AND password=:p"),
+            {"u": u, "p": hash_pwd(p)}
+        ).fetchone()
+        return r is not None
 
 # =============================
 # SESSION STATE
 # =============================
-if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
-
-if "username" not in st.session_state:
-    st.session_state.username = ""
-
+if "login" not in st.session_state:
+    st.session_state.login = False
+if "user" not in st.session_state:
+    st.session_state.user = ""
 if "page" not in st.session_state:
     st.session_state.page = "Login"
 
 # =============================
-# SIDEBAR NAVIGATION
+# SIDEBAR
 # =============================
 st.sidebar.title("📌 Navigation")
-
 pages = ["Login", "Article Classification", "Model Comparison"]
 page = st.sidebar.radio("Go to", pages, index=pages.index(st.session_state.page))
 st.session_state.page = page
 
-# Logout button
-if st.session_state.logged_in:
+if st.session_state.login:
     if st.sidebar.button("🚪 Logout"):
-        st.session_state.logged_in = False
-        st.session_state.username = ""
+        st.session_state.login = False
+        st.session_state.user = ""
         st.session_state.page = "Login"
         st.rerun()
 
-# Block access if not logged in
-if not st.session_state.logged_in and page != "Login":
+if not st.session_state.login and page != "Login":
     st.warning("Please login first")
     st.stop()
 
 # =============================
-# LOAD MODEL (FAST)
+# LOAD MODELS
 # =============================
 @st.cache_resource
-def load_ml_model():
+def lr_model():
     return load("models/best_model_LogisticRegression.joblib")
 
-label_map = {
-    1: "World",
-    2: "Sports",
-    3: "Business",
-    4: "Technology"
-}
+@st.cache_resource
+def text_tokenizer():
+    with open("models/tokenizer.pkl", "rb") as f:
+        return pickle.load(f)
+
+@st.cache_resource
+def lstm_model():
+    return load_model("models/lstm_text_classifier.h5")
+
+@st.cache_resource
+def gru_model():
+    return load_model("models/gru_text_classifier.h5")
+
+# 🔑 Correct label mapping for DL models (from training)
+DL_LABELS = ["Business", "Sports", "World", "Technology"]
 
 # =============================
-# PAGE 1: LOGIN / REGISTER
+# LOGIN PAGE
 # =============================
 if page == "Login":
-    st.subheader("🔐 User Authentication")
+    st.subheader("🔐 Authentication")
 
-    mode = st.radio("Select Action", ["Login", "Register"], horizontal=True)
+    mode = st.radio("Choose", ["Login", "Register"], horizontal=True)
 
     if mode == "Login":
         u = st.text_input("Username")
@@ -125,13 +123,13 @@ if page == "Login":
 
         if st.button("Login"):
             if validate_login(u, p):
-                st.session_state.logged_in = True
-                st.session_state.username = u
+                st.session_state.login = True
+                st.session_state.user = u
                 st.session_state.page = "Article Classification"
                 st.success("Login successful")
                 st.rerun()
             else:
-                st.error("Invalid username or password")
+                st.error("Invalid credentials")
 
     else:
         ru = st.text_input("New Username")
@@ -140,48 +138,67 @@ if page == "Login":
         if st.button("Register"):
             try:
                 register_user(ru, rp)
-                st.success("Registration successful. Please login.")
+                st.success("Registered successfully. Login now.")
             except:
                 st.error("Username already exists")
 
 # =============================
-# PAGE 2: ARTICLE CLASSIFICATION
+# ARTICLE CLASSIFICATION
 # =============================
 elif page == "Article Classification":
-    st.success(f"Logged in as: {st.session_state.username}")
+    st.success(f"Logged in as: {st.session_state.user}")
 
     article = st.text_area("Enter Article Text", height=200)
 
-    if st.button("Predict"):
-        model = load_ml_model()
-        proba = model.predict_proba([article])[0]
+    model_choice = st.selectbox(
+        "Select Model",
+        ["Logistic Regression", "LSTM", "GRU"]
+    )
 
-        pred_idx = int(np.argmax(proba)) + 1
-        confidence = np.max(proba) * 100
+    if st.button("Predict") and article.strip():
+        # ---------------- ML ----------------
+        if model_choice == "Logistic Regression":
+            model = lr_model()
+            probs = model.predict_proba([article])[0]
+            labels = model.classes_   # 🔑 FIX
 
-        st.success(f"✅ Predicted Category: **{label_map[pred_idx]}**")
-        st.info(f"📊 Confidence: **{confidence:.2f}%**")
+        # ---------------- LSTM ----------------
+        elif model_choice == "LSTM":
+            seq = pad_sequences(
+                text_tokenizer().texts_to_sequences([article]),
+                maxlen=200
+            )
+            probs = lstm_model().predict(seq, verbose=0)[0]
+            labels = DL_LABELS
 
-        # Category-wise probability table
-        prob_df = pd.DataFrame({
-            "Category": list(label_map.values()),
-            "Probability (%)": (proba * 100).round(2)
+        # ---------------- GRU ----------------
+        else:
+            seq = pad_sequences(
+                text_tokenizer().texts_to_sequences([article]),
+                maxlen=150
+            )
+            probs = gru_model().predict(seq, verbose=0)[0]
+            labels = DL_LABELS
+
+        pred_idx = int(np.argmax(probs))
+
+        st.success(f"Predicted Category: **{labels[pred_idx]}**")
+        st.info(f"Confidence: **{probs[pred_idx]*100:.2f}%**")
+
+        df = pd.DataFrame({
+            "Category": labels,
+            "Probability (%)": np.round(probs * 100, 2)
         })
-
         st.subheader("📊 Category-wise Probability")
-        st.dataframe(prob_df, use_container_width=True)
+        st.dataframe(df, use_container_width=True)
 
 # =============================
-# PAGE 3: MODEL COMPARISON
+# MODEL COMPARISON
 # =============================
 elif page == "Model Comparison":
-    st.subheader("📈 Model Performance Comparison")
-
-    df = pd.DataFrame({
+    st.dataframe(pd.DataFrame({
         "Model": ["Logistic Regression", "LSTM", "GRU"],
-        "Speed": ["Very Fast", "Slow", "Slow"],
         "Accuracy (%)": [90.6, 92.8, 94.1],
-        "Production Use": ["✅ Yes", "❌ No", "❌ No"]
-    })
-
-    st.dataframe(df, use_container_width=True)
+        "Speed": ["⚡ Very Fast", "Fast", "Fast"],
+        "Production Use": ["✅ Yes", "⚠️ Limited", "⚠️ Limited"]
+    }), use_container_width=True)
