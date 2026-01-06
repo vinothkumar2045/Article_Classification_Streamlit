@@ -21,7 +21,7 @@ st.set_page_config(page_title="Article Classification", layout="centered")
 st.title("📰 Article Classification System")
 
 # =============================
-# DATABASE CONFIG (RDS)
+# DATABASE CONFIG
 # =============================
 DB_HOST = "streamlit-db.c10c0s8c6mju.ap-south-1.rds.amazonaws.com"
 DB_PORT = "5432"
@@ -68,7 +68,7 @@ if "page" not in st.session_state:
     st.session_state.page = "Login"
 
 # =============================
-# SIDEBAR NAVIGATION
+# SIDEBAR
 # =============================
 st.sidebar.title("📌 Navigation")
 pages = ["Login", "Article Classification", "Model Comparison"]
@@ -87,41 +87,33 @@ if not st.session_state.login and page != "Login":
     st.stop()
 
 # =============================
-# LOAD MODELS (LOCAL FILES)
+# LOAD MODELS (CACHED = FAST)
 # =============================
-@st.cache_resource
+@st.cache_resource(show_spinner="Loading Logistic Regression...")
 def lr_model():
     return load("models/best_model_LogisticRegression.joblib")
 
-@st.cache_resource
+@st.cache_resource(show_spinner="Loading tokenizer...")
 def text_tokenizer():
     with open("models/tokenizer.pkl", "rb") as f:
         return pickle.load(f)
 
-@st.cache_resource
+@st.cache_resource(show_spinner="Loading LSTM...")
 def lstm_model():
     return load_model("models/lstm_text_classifier.h5")
 
-@st.cache_resource
+@st.cache_resource(show_spinner="Loading GRU...")
 def gru_model():
     return load_model("models/gru_text_classifier.h5")
 
-# ✅ Correct label mapping
-LR_LABEL_MAP = {
-    1: "World",
-    2: "Sports",
-    3: "Business",
-    4: "Technology"
-}
-
-DL_LABELS = ["Business", "Sports", "World", "Technology"]
+# ✅ SINGLE CORRECT LABEL ORDER
+LABELS = ["World", "Sports", "Business", "Technology"]
 
 # =============================
-# LOGIN / REGISTER PAGE
+# LOGIN PAGE
 # =============================
 if page == "Login":
     st.subheader("🔐 Authentication")
-
     mode = st.radio("Choose", ["Login", "Register"], horizontal=True)
 
     if mode == "Login":
@@ -150,30 +142,19 @@ if page == "Login":
                 st.error("Username already exists")
 
 # =============================
-# ARTICLE CLASSIFICATION PAGE
+# ARTICLE CLASSIFICATION
 # =============================
 elif page == "Article Classification":
     st.success(f"Logged in as: {st.session_state.user}")
 
     article = st.text_area("Enter Article Text", height=200)
-
-    model_choice = st.selectbox(
-        "Select Model",
-        ["Logistic Regression", "LSTM", "GRU"]
-    )
+    model_choice = st.selectbox("Select Model", ["Logistic Regression", "LSTM", "GRU"])
 
     if st.button("Predict") and article.strip():
 
-        # ---------- Logistic Regression ----------
         if model_choice == "Logistic Regression":
-            model = lr_model()
-            probs = model.predict_proba([article])[0]
+            probs = lr_model().predict_proba([article])[0]
 
-            pred_idx = int(np.argmax(probs)) + 1
-            pred_label = LR_LABEL_MAP[pred_idx]
-            labels = list(LR_LABEL_MAP.values())
-
-        # ---------- LSTM ----------
         elif model_choice == "LSTM":
             seq = pad_sequences(
                 text_tokenizer().texts_to_sequences([article]),
@@ -181,42 +162,30 @@ elif page == "Article Classification":
             )
             probs = lstm_model().predict(seq, verbose=0)[0]
 
-            pred_idx = int(np.argmax(probs))
-            pred_label = DL_LABELS[pred_idx]
-            labels = DL_LABELS
-
-        # ---------- GRU ----------
-        else:
+        else:  # GRU
             seq = pad_sequences(
                 text_tokenizer().texts_to_sequences([article]),
                 maxlen=150
             )
             probs = gru_model().predict(seq, verbose=0)[0]
 
-            pred_idx = int(np.argmax(probs))
-            pred_label = DL_LABELS[pred_idx]
-            labels = DL_LABELS
-
-        st.success(f"✅ Predicted Category: **{pred_label}**")
+        pred_idx = int(np.argmax(probs))
+        st.success(f"✅ Predicted Category: **{LABELS[pred_idx]}**")
         st.info(f"📊 Confidence: **{probs[pred_idx]*100:.2f}%**")
 
         df = pd.DataFrame({
-            "Category": labels,
+            "Category": LABELS,
             "Probability (%)": np.round(probs * 100, 2)
         })
         st.subheader("📊 Category-wise Probability")
         st.dataframe(df, use_container_width=True)
 
 # =============================
-# MODEL COMPARISON PAGE
+# MODEL COMPARISON
 # =============================
 elif page == "Model Comparison":
-    st.dataframe(
-        pd.DataFrame({
-            "Model": ["Logistic Regression", "LSTM", "GRU"],
-            "Accuracy (%)": [90.6, 92.8, 94.1],
-            "Speed": ["⚡ Very Fast", "Fast", "Fast"],
-            "Production Use": ["✅ Yes", "⚠️ Limited", "⚠️ Limited"]
-        }),
-        use_container_width=True
-    )
+    st.dataframe(pd.DataFrame({
+        "Model": ["Logistic Regression", "LSTM", "GRU"],
+        "Accuracy (%)": [90.6, 92.8, 94.1],
+        "Speed": ["⚡ Very Fast", "Fast", "Fast"]
+    }), use_container_width=True)
