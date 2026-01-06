@@ -1,12 +1,12 @@
 # ==========================================
-# FAST STREAMLIT ARTICLE CLASSIFICATION
-# WITH RDS AUTH (AWS SAFE)
+# FAST STREAMLIT ARTICLE CLASSIFICATION APP
+# WITH RDS AUTHENTICATION (READY TO RUN)
 # ==========================================
 
 import streamlit as st
 import numpy as np
-import pickle
 import pandas as pd
+import pickle
 import hashlib
 
 from joblib import load
@@ -27,7 +27,7 @@ DB_HOST = "streamlit-db.c10c0s8c6mju.ap-south-1.rds.amazonaws.com"
 DB_PORT = "5432"
 DB_NAME = "articledb"
 DB_USER = "dbadmin"
-DB_PASSWORD = "cpvinoth2045"
+DB_PASSWORD = "cpvinoth2045"   # 🔐 already confirmed
 
 @st.cache_resource
 def get_db_engine():
@@ -56,7 +56,7 @@ def register_user(username, password):
 def validate_login(username, password):
     query = text("""
         SELECT id FROM users
-        WHERE username=:u AND password=:p
+        WHERE username = :u AND password = :p
     """)
     with get_db_engine().connect() as conn:
         return conn.execute(query, {
@@ -64,13 +64,23 @@ def validate_login(username, password):
             "p": hash_password(password)
         }).fetchone() is not None
 
+def log_prediction(username, model_used):
+    query = text("""
+        INSERT INTO user_logins (username, model_used)
+        VALUES (:u, :m)
+    """)
+    with get_db_engine().begin() as conn:
+        conn.execute(query, {"u": username, "m": model_used})
+
 # =============================
 # SESSION STATE
 # =============================
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
+
 if "username" not in st.session_state:
     st.session_state.username = ""
+
 if "page" not in st.session_state:
     st.session_state.page = "Login"
 
@@ -78,6 +88,7 @@ if "page" not in st.session_state:
 # SIDEBAR NAVIGATION
 # =============================
 st.sidebar.title("📌 Navigation")
+
 pages = ["Login", "Article Classification", "Model Comparison"]
 
 page = st.sidebar.radio(
@@ -85,9 +96,10 @@ page = st.sidebar.radio(
     pages,
     index=pages.index(st.session_state.page)
 )
+
 st.session_state.page = page
 
-# LOGOUT
+# LOGOUT BUTTON
 if st.session_state.logged_in:
     if st.sidebar.button("🚪 Logout"):
         st.session_state.logged_in = False
@@ -95,7 +107,7 @@ if st.session_state.logged_in:
         st.session_state.page = "Login"
         st.rerun()
 
-# BLOCK UNAUTHENTICATED ACCESS
+# BLOCK ACCESS
 if not st.session_state.logged_in and page != "Login":
     st.warning("Please login first")
     st.stop()
@@ -108,7 +120,7 @@ def ml_model():
     return load("models/best_model_LogisticRegression.joblib")
 
 @st.cache_resource
-def text_tokenizer():
+def tokenizer():
     with open("models/tokenizer.pkl", "rb") as f:
         return pickle.load(f)
 
@@ -128,22 +140,14 @@ label_map = {
 }
 
 # =============================
-# TEXT CLEANING (IMPORTANT)
-# =============================
-def clean_text(text):
-    text = text.lower()
-    text = text.replace("\n", " ")
-    return text
-
-# =============================
 # PAGE 1: LOGIN / REGISTER
 # =============================
 if page == "Login":
     st.subheader("🔐 User Authentication")
 
-    auth_mode = st.radio("Select Action", ["Login", "Register"], horizontal=True)
+    mode = st.radio("Select Action", ["Login", "Register"], horizontal=True)
 
-    if auth_mode == "Login":
+    if mode == "Login":
         u = st.text_input("Username")
         p = st.text_input("Password", type="password")
 
@@ -174,40 +178,53 @@ if page == "Login":
 elif page == "Article Classification":
     st.success(f"Logged in as: {st.session_state.username}")
 
-    article = clean_text(
-        st.text_area("Enter Article Text", height=200)
-    )
-
-    if len(article.split()) < 15:
-        st.warning("⚠️ Short text detected. Accuracy may be low.")
+    article = st.text_area("Enter Article Text", height=200)
 
     model_type = st.selectbox(
         "Select Model",
-        ["Logistic Regression", "LSTM", "GRU"],
-        index=0
+        ["Logistic Regression", "LSTM", "GRU"]
     )
 
     if st.button("Predict"):
+        if not article.strip():
+            st.warning("Please enter article text")
+            st.stop()
+
         if model_type == "Logistic Regression":
             proba = ml_model().predict_proba([article])[0]
 
         elif model_type == "LSTM":
             seq = pad_sequences(
-                text_tokenizer().texts_to_sequences([article]),
+                tokenizer().texts_to_sequences([article]),
                 maxlen=200
             )
             proba = lstm_model().predict(seq, verbose=0)[0]
 
         else:
             seq = pad_sequences(
-                text_tokenizer().texts_to_sequences([article]),
+                tokenizer().texts_to_sequences([article]),
                 maxlen=150
             )
             proba = gru_model().predict(seq, verbose=0)[0]
 
         pred_idx = int(np.argmax(proba)) + 1
-        st.success(f"Predicted Category: {label_map[pred_idx]}")
-        st.info(f"Confidence: {np.max(proba)*100:.2f}%")
+        pred_label = label_map[pred_idx]
+        confidence = np.max(proba) * 100
+
+        st.success(f"Predicted Category: **{pred_label}**")
+        st.info(f"Confidence: **{confidence:.2f}%**")
+
+        # 📊 CATEGORY PROBABILITIES
+        st.subheader("📊 Category-wise Probability")
+
+        prob_df = pd.DataFrame({
+            "Category": list(label_map.values()),
+            "Probability (%)": [round(p * 100, 2) for p in proba]
+        })
+
+        st.table(prob_df)
+
+        log_prediction(st.session_state.username, model_type)
 
 # =============================
 # PAGE 3: MODEL COMPARISON
@@ -221,4 +238,3 @@ elif page == "Model Comparison":
         }),
         use_container_width=True
     )
-    st.info("Note: Deep learning models perform better with longer article text.")
