@@ -1,6 +1,6 @@
 # ==========================================
 # FAST & STABLE ARTICLE CLASSIFICATION APP
-# (ML + LSTM + GRU) WITH RDS AUTH — FIXED
+# (LR + LSTM + GRU) WITH RDS AUTH
 # ==========================================
 
 import streamlit as st
@@ -21,7 +21,7 @@ st.set_page_config(page_title="Article Classification", layout="centered")
 st.title("📰 Article Classification System")
 
 # =============================
-# DATABASE CONFIG
+# DATABASE CONFIG (RDS)
 # =============================
 DB_HOST = "streamlit-db.c10c0s8c6mju.ap-south-1.rds.amazonaws.com"
 DB_PORT = "5432"
@@ -68,7 +68,7 @@ if "page" not in st.session_state:
     st.session_state.page = "Login"
 
 # =============================
-# SIDEBAR
+# SIDEBAR NAVIGATION
 # =============================
 st.sidebar.title("📌 Navigation")
 pages = ["Login", "Article Classification", "Model Comparison"]
@@ -87,7 +87,7 @@ if not st.session_state.login and page != "Login":
     st.stop()
 
 # =============================
-# LOAD MODELS
+# LOAD MODELS (LOCAL FILES)
 # =============================
 @st.cache_resource
 def lr_model():
@@ -106,11 +106,18 @@ def lstm_model():
 def gru_model():
     return load_model("models/gru_text_classifier.h5")
 
-# 🔑 Correct label mapping for DL models (from training)
+# ✅ Correct label mapping
+LR_LABEL_MAP = {
+    1: "World",
+    2: "Sports",
+    3: "Business",
+    4: "Technology"
+}
+
 DL_LABELS = ["Business", "Sports", "World", "Technology"]
 
 # =============================
-# LOGIN PAGE
+# LOGIN / REGISTER PAGE
 # =============================
 if page == "Login":
     st.subheader("🔐 Authentication")
@@ -143,7 +150,7 @@ if page == "Login":
                 st.error("Username already exists")
 
 # =============================
-# ARTICLE CLASSIFICATION
+# ARTICLE CLASSIFICATION PAGE
 # =============================
 elif page == "Article Classification":
     st.success(f"Logged in as: {st.session_state.user}")
@@ -156,34 +163,42 @@ elif page == "Article Classification":
     )
 
     if st.button("Predict") and article.strip():
-        # ---------------- ML ----------------
+
+        # ---------- Logistic Regression ----------
         if model_choice == "Logistic Regression":
             model = lr_model()
             probs = model.predict_proba([article])[0]
-            labels = model.classes_   # 🔑 FIX
 
-        # ---------------- LSTM ----------------
+            pred_idx = int(np.argmax(probs)) + 1
+            pred_label = LR_LABEL_MAP[pred_idx]
+            labels = list(LR_LABEL_MAP.values())
+
+        # ---------- LSTM ----------
         elif model_choice == "LSTM":
             seq = pad_sequences(
                 text_tokenizer().texts_to_sequences([article]),
                 maxlen=200
             )
             probs = lstm_model().predict(seq, verbose=0)[0]
+
+            pred_idx = int(np.argmax(probs))
+            pred_label = DL_LABELS[pred_idx]
             labels = DL_LABELS
 
-        # ---------------- GRU ----------------
+        # ---------- GRU ----------
         else:
             seq = pad_sequences(
                 text_tokenizer().texts_to_sequences([article]),
                 maxlen=150
             )
             probs = gru_model().predict(seq, verbose=0)[0]
+
+            pred_idx = int(np.argmax(probs))
+            pred_label = DL_LABELS[pred_idx]
             labels = DL_LABELS
 
-        pred_idx = int(np.argmax(probs))
-
-        st.success(f"Predicted Category: **{labels[pred_idx]}**")
-        st.info(f"Confidence: **{probs[pred_idx]*100:.2f}%**")
+        st.success(f"✅ Predicted Category: **{pred_label}**")
+        st.info(f"📊 Confidence: **{probs[pred_idx]*100:.2f}%**")
 
         df = pd.DataFrame({
             "Category": labels,
@@ -193,12 +208,15 @@ elif page == "Article Classification":
         st.dataframe(df, use_container_width=True)
 
 # =============================
-# MODEL COMPARISON
+# MODEL COMPARISON PAGE
 # =============================
 elif page == "Model Comparison":
-    st.dataframe(pd.DataFrame({
-        "Model": ["Logistic Regression", "LSTM", "GRU"],
-        "Accuracy (%)": [90.6, 92.8, 94.1],
-        "Speed": ["⚡ Very Fast", "Fast", "Fast"],
-        "Production Use": ["✅ Yes", "⚠️ Limited", "⚠️ Limited"]
-    }), use_container_width=True)
+    st.dataframe(
+        pd.DataFrame({
+            "Model": ["Logistic Regression", "LSTM", "GRU"],
+            "Accuracy (%)": [90.6, 92.8, 94.1],
+            "Speed": ["⚡ Very Fast", "Fast", "Fast"],
+            "Production Use": ["✅ Yes", "⚠️ Limited", "⚠️ Limited"]
+        }),
+        use_container_width=True
+    )
