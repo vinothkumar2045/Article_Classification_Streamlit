@@ -1,6 +1,6 @@
 # ==========================================
 # FAST STREAMLIT ARTICLE CLASSIFICATION
-# WITH RDS AUTH (AWS SAFE, NO TRANSFORMERS)
+# WITH RDS AUTH (AWS SAFE)
 # ==========================================
 
 import streamlit as st
@@ -17,11 +17,7 @@ from sqlalchemy import create_engine, text
 # =============================
 # PAGE CONFIG
 # =============================
-st.set_page_config(
-    page_title="Article Classification System",
-    layout="centered"
-)
-
+st.set_page_config(page_title="Article Classification System", layout="centered")
 st.title("📰 Article Classification System")
 
 # =============================
@@ -60,7 +56,7 @@ def register_user(username, password):
 def validate_login(username, password):
     query = text("""
         SELECT id FROM users
-        WHERE username = :u AND password = :p
+        WHERE username=:u AND password=:p
     """)
     with get_db_engine().connect() as conn:
         return conn.execute(query, {
@@ -69,14 +65,12 @@ def validate_login(username, password):
         }).fetchone() is not None
 
 # =============================
-# SESSION STATE (STABLE)
+# SESSION STATE
 # =============================
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
-
 if "username" not in st.session_state:
     st.session_state.username = ""
-
 if "page" not in st.session_state:
     st.session_state.page = "Login"
 
@@ -84,7 +78,6 @@ if "page" not in st.session_state:
 # SIDEBAR NAVIGATION
 # =============================
 st.sidebar.title("📌 Navigation")
-
 pages = ["Login", "Article Classification", "Model Comparison"]
 
 page = st.sidebar.radio(
@@ -92,7 +85,6 @@ page = st.sidebar.radio(
     pages,
     index=pages.index(st.session_state.page)
 )
-
 st.session_state.page = page
 
 # LOGOUT
@@ -109,7 +101,7 @@ if not st.session_state.logged_in and page != "Login":
     st.stop()
 
 # =============================
-# LOAD MODELS (FAST)
+# LOAD MODELS (FAST & CACHED)
 # =============================
 @st.cache_resource
 def ml_model():
@@ -136,16 +128,20 @@ label_map = {
 }
 
 # =============================
+# TEXT CLEANING (IMPORTANT)
+# =============================
+def clean_text(text):
+    text = text.lower()
+    text = text.replace("\n", " ")
+    return text
+
+# =============================
 # PAGE 1: LOGIN / REGISTER
 # =============================
 if page == "Login":
     st.subheader("🔐 User Authentication")
 
-    auth_mode = st.radio(
-        "Select Action",
-        ["Login", "Register"],
-        horizontal=True
-    )
+    auth_mode = st.radio("Select Action", ["Login", "Register"], horizontal=True)
 
     if auth_mode == "Login":
         u = st.text_input("Username")
@@ -161,7 +157,7 @@ if page == "Login":
             else:
                 st.error("Invalid username or password")
 
-    else:  # Register
+    else:
         ru = st.text_input("New Username")
         rp = st.text_input("New Password", type="password")
 
@@ -178,11 +174,17 @@ if page == "Login":
 elif page == "Article Classification":
     st.success(f"Logged in as: {st.session_state.username}")
 
-    article = st.text_area("Enter Article Text", height=200)
+    article = clean_text(
+        st.text_area("Enter Article Text", height=200)
+    )
+
+    if len(article.split()) < 15:
+        st.warning("⚠️ Short text detected. Accuracy may be low.")
 
     model_type = st.selectbox(
         "Select Model",
-        ["Logistic Regression", "LSTM", "GRU"]
+        ["Logistic Regression", "LSTM", "GRU"],
+        index=0
     )
 
     if st.button("Predict"):
@@ -196,7 +198,7 @@ elif page == "Article Classification":
             )
             proba = lstm_model().predict(seq, verbose=0)[0]
 
-        else:  # GRU
+        else:
             seq = pad_sequences(
                 text_tokenizer().texts_to_sequences([article]),
                 maxlen=150
@@ -205,7 +207,7 @@ elif page == "Article Classification":
 
         pred_idx = int(np.argmax(proba)) + 1
         st.success(f"Predicted Category: {label_map[pred_idx]}")
-        st.info(f"Confidence: {np.max(proba) * 100:.2f}%")
+        st.info(f"Confidence: {np.max(proba)*100:.2f}%")
 
 # =============================
 # PAGE 3: MODEL COMPARISON
@@ -219,3 +221,4 @@ elif page == "Model Comparison":
         }),
         use_container_width=True
     )
+    st.info("Note: Deep learning models perform better with longer article text.")
