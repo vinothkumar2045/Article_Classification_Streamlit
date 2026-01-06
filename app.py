@@ -100,11 +100,11 @@ def text_tokenizer():
 
 @st.cache_resource
 def lstm_model():
-    return load_model("models/lstm_text_classifier.h5")
+    return load_model("models/best_model_LogisticRegression.joblib")
 
 @st.cache_resource
 def gru_model():
-    return load_model("models/gru_text_classifier.h5")
+    return load_model("models/best_model_LogisticRegression.joblib")
 
 # ✅ Correct label mapping
 LR_LABEL_MAP = {
